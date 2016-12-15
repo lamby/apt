@@ -85,6 +85,132 @@ bool AuthPrompt(std::vector<std::string> const &UntrustedList, bool const Prompt
 
    return _error->Error(_("There were unauthenticated packages and -y was used without --allow-unauthenticated"));
 }
+
+// GetOutput - execute CmdLine and place the first line in output	/*{{{*/
+static bool GetOutput(std::string &output, std::string const CmdLine, bool const Debug)
+{
+   pid_t Child;
+   FileFd PipeFd;
+   char buf[1024];
+
+   if (Debug)
+      std::cerr << CmdLine << std::endl;
+
+   std::vector<const char *> Args = {"/bin/sh", "-c", CmdLine.c_str(), nullptr};
+   if (Popen(&Args[0], PipeFd, Child, FileFd::ReadOnly, false) == false)
+      return false;
+
+   PipeFd.ReadLine(buf, sizeof(buf));
+   buf[sizeof(buf) - 1] = '\0';
+   PipeFd.Close();
+
+   if (ExecWait(Child, "sh") == false)
+      return false;
+
+   output = _strstrip(buf);
+
+   return true;
+}
+
+// CheckReproducible - check if each download comes form a reproducible source	/*{{{*/
+bool CheckReproducible(pkgAcquire& Fetcher, bool const PromptUser)
+{
+   if (_config->FindB("APT::Get::AllowUnreproducible", false))
+      return true;
+
+   std::string Output;
+   std::vector<std::string> UnreproducibleList;
+   bool const Debug = _config->FindB("Debug::pkgAcquire::Reproducible",false);
+
+   std::string const Url = _config->Find("APT::Get::ReproducibleStatusJsonUrl",
+      "https://tests.reproducible-builds.org/reproducible.json.bz2");
+   std::string const NativeArch = _config->Find("APT::Architecture");
+   std::string const CacheFileName = _config->FindFile("Dir::Cache::reproduciblecache");
+   std::string const DefaultRelease = _config->Find("APT::Default-Release","unstable");
+
+   // Update local status file
+   std::string const UpdateCommand =
+      std::string("/usr/bin/curl")
+      + ((Debug) ? "" : " --silent")
+      + " --location"
+      + " -z " + CacheFileName
+      + " -o " + CacheFileName
+      + " " + Url;
+   if (GetOutput(Output, UpdateCommand, Debug) == false)
+      return _error->Error(_("Could not update reproducible cache"));
+
+   for (pkgAcquire::ItemIterator I = Fetcher.ItemsBegin(); I < Fetcher.ItemsEnd(); ++I) {
+      std::string const BinaryPkg = (*I)->ShortDesc();
+      std::string SrcPkg = BinaryPkg;
+
+      if (Debug)
+         std::cerr << "Checking reproducibility of " << BinaryPkg << std::endl;
+
+      // Determine source package name
+      std::string const SourcePackageCommand =
+         "apt-cache show " + BinaryPkg + " | awk '/Source: / { print $2 }'";
+      if (GetOutput(Output, SourcePackageCommand, Debug) == false)
+         return _error->Error(_("Could not check source package name"));
+
+      // If we got output, update the source package name
+      if (Output.length() > 0)
+         SrcPkg = Output;
+
+      std::string const JqCommand =
+         "bunzip2 -c " + CacheFileName + " | " +
+         "jq --compact-output --raw-output '.[] | " +
+            "select(.suite==\"" + DefaultRelease + "\") | " +
+            "select(.package==\"" + SrcPkg + "\") | " +
+            "select(.status==\"reproducible\") | " +
+            "select(.architecture==\"" + NativeArch + "\")" +
+            "'";
+      if (GetOutput(Output, JqCommand, Debug) == false)
+         return _error->Error(_("Could not filter reproducible status"));
+
+      // If we got no output, we failed to match filters
+      if (Output.length() == 0)
+         UnreproducibleList.push_back(BinaryPkg);
+   }
+
+   if (UnreproducibleList.empty())
+      return true;
+
+   return ReproduciblePrompt(UnreproducibleList, PromptUser);
+}
+									/*}}}*/
+
+
+bool ReproduciblePrompt(std::vector<std::string> const &UnreproducibleList, bool const PromptUser)/*{{{*/
+{
+   ShowList(c2out,_("WARNING: The following packages are not reproducible!"), UnreproducibleList,
+	 [](std::string const&) { return true; },
+	 [](std::string const&str) { return str; },
+	 [](std::string const&) { return ""; });
+
+   if (_config->FindB("APT::Get::AllowUnreproducible",false) == true)
+   {
+      c2out << _("Unreproducible warning overridden.\n");
+      return true;
+   }
+
+   if (PromptUser == false)
+      return _error->Error(_("Some packages are not reproducible"));
+
+   if (_config->FindI("quiet",0) < 2
+       && _config->FindB("APT::Get::Assume-Yes",false) == false)
+   {
+      if (!YnPrompt(_("Install these packages anyway?"), false))
+         return _error->Error(_("Some packages are not reproducible"));
+
+      return true;
+   }
+   else if (_config->FindB("APT::Get::Force-Yes",false) == true) {
+      _error->Warning(_("--force-yes is deprecated, use one of the options starting with --allow instead."));
+      return true;
+   }
+
+   return _error->Error(_("There were unreproducible packages and -y was used without --allow-unreproducible"));
+}
 									/*}}}*/
 bool AcquireRun(pkgAcquire &Fetcher, int const PulseInterval, bool * const Failure, bool * const TransientNetworkFailure)/*{{{*/
 {
@@ -213,7 +339,9 @@ bool DoDownload(CommandLine &CmdL)
       return true;
    }
 
-   if (_error->PendingError() == true || CheckAuth(Fetcher, false) == false)
+   if (_error->PendingError() == true
+       || CheckAuth(Fetcher, false) == false
+       || CheckReproducible(Fetcher, false) == false)
       return false;
 
    bool Failed = false;

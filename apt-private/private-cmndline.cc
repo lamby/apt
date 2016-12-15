@@ -274,6 +274,7 @@ static bool addArgumentsAPTGet(std::vector<CommandLine::Args> &Args, char const 
    addArg(0,"only-source","APT::Get::Only-Source",0);
    addArg(0,"allow-unauthenticated","APT::Get::AllowUnauthenticated",0);
    addArg(0,"allow-insecure-repositories","Acquire::AllowInsecureRepositories",0);
+   addArg(0,"allow-unreproducible","APT::Get::AllowUnreproducible",0);
    addArg(0,"allow-weak-repositories","Acquire::AllowWeakRepositories",0);
    addArg(0,"install-recommends","APT::Install-Recommends",CommandLine::Boolean);
    addArg(0,"install-suggests","APT::Install-Suggests",CommandLine::Boolean);

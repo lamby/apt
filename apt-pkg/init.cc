@@ -145,6 +145,7 @@ bool pkgInitConfig(Configuration &Cnf)
    Cnf.CndSet("Dir::Cache::archives","archives/");
    Cnf.CndSet("Dir::Cache::srcpkgcache","srcpkgcache.bin");
    Cnf.CndSet("Dir::Cache::pkgcache","pkgcache.bin");
+   Cnf.CndSet("Dir::Cache::reproduciblecache","reproducible.json.bz2");
 
    // Configuration
    Cnf.CndSet("Dir::Etc", CONF_DIR + 1);

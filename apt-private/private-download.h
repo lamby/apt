@@ -16,6 +16,12 @@ bool CheckAuth(pkgAcquire& Fetcher, bool const PromptUser);
 // should continue
 bool AuthPrompt(std::vector<std::string> const &UntrustedList, bool const PromptUser);
 
+// Check if all files in the fetcher are reproducible
+bool CheckReproducible(pkgAcquire& Fetcher, bool const PromptUser);
+
+// show a warning prompt and return true if the system should continue
+bool ReproduciblePrompt(std::vector<std::string> const &UnreproducibleList, bool const PromptUser);
+
 APT_PUBLIC bool AcquireRun(pkgAcquire &Fetcher, int const PulseInterval, bool * const Failure, bool * const TransientNetworkFailure);
 
 bool CheckFreeSpaceBeforeDownload(std::string const &Dir, unsigned long long FetchBytes);

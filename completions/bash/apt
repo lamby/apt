@@ -27,6 +27,7 @@ _apt()
         --arch-only
         --allow-unauthenticated
         --allow-insecure-repositories
+        --allow-unreproducible
         --install-recommends
         --install-suggests
         --fix-policy

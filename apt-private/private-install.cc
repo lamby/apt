@@ -310,6 +310,9 @@ bool InstallPackages(CacheFile &Cache,bool ShwKept,bool Ask, bool Safety)
    if (!CheckAuth(Fetcher, true))
       return false;
 
+   if (!CheckReproducible(Fetcher, true))
+      return false;
+
    /* Unlock the dpkg lock if we are not going to be doing an install
       after. */
    if (_config->FindB("APT::Get::Download-Only",false) == true)
