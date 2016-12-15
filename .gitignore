@@ -66,6 +66,7 @@ docbook-text-style.xsl
 **/methods/xz
 **/methods/lzma
 
+**/test/interactive-helper/aptdropprivs
 **/test/interactive-helper/aptwebserver
 **/test/interactive-helper/extract-control
 **/test/interactive-helper/rpmver
