@@ -85,6 +85,89 @@ bool AuthPrompt(std::vector<std::string> const &UntrustedList, bool const Prompt
 
    return _error->Error(_("There were unauthenticated packages and -y was used without --allow-unauthenticated"));
 }
+
+// CheckReproducible - check if each download comes form a reproducible source	/*{{{*/
+bool CheckReproducible(pkgAcquire& Fetcher, bool const PromptUser)
+{
+   if (_config->FindB("APT::Get::AllowUnreproducible", false))
+      return true;
+
+   std::vector<std::string> UnreproducibleList;
+
+   bool const Debug = _config->FindB("Debug::pkgAcquire::Reproducible", false);
+
+   for (pkgAcquire::ItemIterator I = Fetcher.ItemsBegin(); I < Fetcher.ItemsEnd(); ++I) {
+      std::vector<const char *> Args;
+      Args.push_back("/usr/bin/curl");
+      Args.push_back("--max-time");
+      Args.push_back("10");
+      Args.push_back("--silent");
+      Args.push_back("http://127.0.0.1/torrents/tails-i386-2.7/tails-i386-2.7.iso.sig");
+      Args.push_back(nullptr);
+
+      if (Debug == true) {
+         std::cerr << "->";
+         for (size_t i = 0; i < Args.size() - 1; ++i)
+            std::cerr << " " << Args[i];
+         std::cerr << std::endl;
+      }
+
+      pid_t Child;
+      FileFd PipeFd;
+      if (Popen(&Args[0], PipeFd, Child, FileFd::ReadOnly, true) == false)
+         return false;
+
+      char buf[512];
+      PipeFd.ReadLine(buf, sizeof(buf));
+      PipeFd.Close();
+
+      if (ExecWait(Child, "curl") == false)
+         return false;
+
+      if (Debug == true)
+         std::cerr << "<- " << _strstrip(buf) << std::endl;
+
+      if (strcmp("-----BEGIN PGP SIGNATURE-----", buf) == 0)
+         UnreproducibleList.push_back((*I)->ShortDesc());
+   }
+
+   if (UnreproducibleList.empty())
+      return true;
+
+   return ReproduciblePrompt(UnreproducibleList, PromptUser);
+}
+									/*}}}*/
+bool ReproduciblePrompt(std::vector<std::string> const &UnreproducibleList, bool const PromptUser)/*{{{*/
+{
+   ShowList(c2out,_("WARNING: The following packages are not reproducible!"), UnreproducibleList,
+	 [](std::string const&) { return true; },
+	 [](std::string const&str) { return str; },
+	 [](std::string const&) { return ""; });
+
+   if (_config->FindB("APT::Get::AllowUnreproducible",false) == true)
+   {
+      c2out << _("Unreproducible warning overridden.\n");
+      return true;
+   }
+
+   if (PromptUser == false)
+      return _error->Error(_("Some packages are not reproducible"));
+
+   if (_config->FindI("quiet",0) < 2
+       && _config->FindB("APT::Get::Assume-Yes",false) == false)
+   {
+      if (!YnPrompt(_("Install these packages anyway?"), false))
+         return _error->Error(_("Some packages are not reproducible"));
+
+      return true;
+   }
+   else if (_config->FindB("APT::Get::Force-Yes",false) == true) {
+      _error->Warning(_("--force-yes is deprecated, use one of the options starting with --allow instead."));
+      return true;
+   }
+
+   return _error->Error(_("There were unreproducible packages and -y was used without --allow-unreproducible"));
+}
 									/*}}}*/
 bool AcquireRun(pkgAcquire &Fetcher, int const PulseInterval, bool * const Failure, bool * const TransientNetworkFailure)/*{{{*/
 {
@@ -213,7 +296,9 @@ bool DoDownload(CommandLine &CmdL)
       return true;
    }
 
-   if (_error->PendingError() == true || CheckAuth(Fetcher, false) == false)
+   if (_error->PendingError() == true
+       || CheckAuth(Fetcher, false) == false
+       || CheckReproducible(Fetcher, false) == false)
       return false;
 
    bool Failed = false;

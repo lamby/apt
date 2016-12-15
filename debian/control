@@ -32,6 +32,8 @@ Package: apt
 Architecture: any
 Depends: adduser,
          gpgv | gpgv2 | gpgv1,
+         curl,
+         ca-certificates,
          ${apt:keyring},
          ${misc:Depends},
          ${shlibs:Depends}
